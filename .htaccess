@@ -1,0 +1,67 @@
+# Wedding Digital Premium - HTACCESS CONFIGURATION
+# Clean URLs & Security Rules
+
+# Enable rewrite engine
+RewriteEngine On
+RewriteBase /
+
+# Redirect to HTTPS if available
+# RewriteCond %{HTTPS} off
+# RewriteRule ^(.*)$ https://%{HTTP_HOST}/$1 [R=301,L]
+
+# Remove trailing slash
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)/$ /$1 [L,R=301]
+
+# Clean URLs: index.php?page=home -> /home
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^([a-z0-9\-]+)/?$ index.php?page=$1 [L,QSA]
+
+# Redirect /admin to admin panel
+RewriteRule ^admin/?$ admin/index.php [L]
+
+# Protect sensitive files
+<FilesMatch "^\.">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+<FilesMatch "\.(sql|log|ini|config)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Security headers
+Header set X-Content-Type-Options "nosniff"
+Header set X-Frame-Options "SAMEORIGIN"
+Header set X-XSS-Protection "1; mode=block"
+
+# Enable CORS for assets
+<FilesMatch "\.(jpg|jpeg|png|gif|ico|css|js|woff|woff2|ttf|svg|eot)$">
+    Header set Access-Control-Allow-Origin "*"
+</FilesMatch>
+
+# Compression
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css text/javascript application/javascript application/xml
+</IfModule>
+
+# Cache control
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType image/jpg "access plus 1 year"
+    ExpiresByType image/jpeg "access plus 1 year"
+    ExpiresByType image/png "access plus 1 year"
+    ExpiresByType image/gif "access plus 1 year"
+    ExpiresByType image/svg+xml "access plus 1 year"
+    ExpiresByType text/css "access plus 1 month"
+    ExpiresByType application/javascript "access plus 1 month"
+    ExpiresByType font/woff "access plus 1 year"
+    ExpiresByType font/woff2 "access plus 1 year"
+</IfModule>
+
+# Custom error pages
+ErrorDocument 404 /index.php?page=404
+ErrorDocument 403 /index.php?page=403
+ErrorDocument 500 /index.php?page=500
