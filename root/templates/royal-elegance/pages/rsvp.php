@@ -197,4 +197,204 @@ async function searchGuest() {
     }
     
     try {
-        const response = await fetch(`<?= base_url("
+        const response = await fetch(`<?= base_url("api/guests/search?q=") ?>${encodeURIComponent(searchTerm)}`);
+        const data = await response.json();
+        
+        if(data.success) {
+            resultsDiv.innerHTML = data.data.map(guest => `
+                <div class="result-item" onclick="selectGuest('${guest.id}', '${guest.name}', '${guest.invitation_code}')">
+                    <strong>${guest.name}</strong>
+                    <small>${guest.invitation_code} • ${guest.group}</small>
+                </div>
+            `).join('');
+        }
+    } catch(error) {
+        console.error('Error searching guest:', error);
+    }
+}
+
+function selectGuest(id, name, code) {
+    document.getElementById('guestId').value = id;
+    document.getElementById('name').value = name;
+    document.getElementById('invitationCode').value = code;
+    document.getElementById('guestSearch').value = name;
+    document.getElementById('searchResults').innerHTML = '';
+}
+
+// Show/hide guest count based on attendance
+document.querySelectorAll('input[name="attendance"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+        const guestCountGroup = document.getElementById('guestCountGroup');
+        if(this.value === 'yes') {
+            guestCountGroup.style.display = 'block';
+        } else {
+            guestCountGroup.style.display = 'none';
+        }
+    });
+});
+
+// Load confirmed guests
+async function loadGuests(page = 1) {
+    if(isLoading) return;
+    
+    isLoading = true;
+    document.getElementById('loadMoreGuests').classList.add('loading');
+    
+    try {
+        const response = await fetch(`<?= base_url("api/guests/confirmed?page=") ?>${page}`);
+        const data = await response.json();
+        
+        if(data.success) {
+            const guestsList = document.getElementById('guestsList');
+            
+            if(page === 1) {
+                guestsList.innerHTML = '';
+            }
+            
+            data.data.forEach(guest => {
+                const guestElement = document.createElement('div');
+                guestElement.className = 'guest-item';
+                guestElement.innerHTML = `
+                    <div class="guest-avatar">
+                        ${guest.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div class="guest-info">
+                        <h4>${guest.name}</h4>
+                        <p class="guest-message">${guest.message || 'Mengucapkan selamat'}</p>
+                        <small class="guest-time">${formatTime(guest.created_at)}</small>
+                    </div>
+                    <div class="guest-badge">
+                        <span class="badge">${guest.guest_count} orang</span>
+                    </div>
+                `;
+                guestsList.appendChild(guestElement);
+            });
+            
+            currentPage = page;
+            
+            // Hide load more button if no more data
+            if(data.data.length < 10) {
+                document.getElementById('loadMoreGuests').style.display = 'none';
+            }
+        }
+    } catch(error) {
+        console.error('Error loading guests:', error);
+    } finally {
+        isLoading = false;
+        document.getElementById('loadMoreGuests').classList.remove('loading');
+    }
+}
+
+// Submit RSVP form
+document.getElementById('rsvpForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const submitBtn = document.getElementById('submitRsvp');
+    const spinner = document.getElementById('loadingSpinner');
+    const btnText = submitBtn.querySelector('.btn-text');
+    
+    // Show loading
+    submitBtn.disabled = true;
+    spinner.classList.remove('hidden');
+    btnText.textContent = 'Mengirim...';
+    
+    try {
+        const formData = new FormData(this);
+        
+        const response = await fetch('<?= base_url("api/rsvp/submit") ?>', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const data = await response.json();
+        
+        if(data.success) {
+            // Show success message
+            showNotification('Konfirmasi berhasil dikirim!', 'success');
+            
+            // Reset form
+            this.reset();
+            document.getElementById('guestId').value = '';
+            document.getElementById('invitationCode').value = '';
+            document.getElementById('guestCountGroup').style.display = 'none';
+            
+            // Reload stats and guests
+            loadStats();
+            loadGuests(1);
+            
+            // Send WhatsApp notification if enabled
+            if(data.data.whatsapp_sent) {
+                showNotification('Notifikasi WhatsApp telah dikirim', 'info');
+            }
+        } else {
+            showNotification(data.message || 'Terjadi kesalahan', 'error');
+        }
+    } catch(error) {
+        console.error('Error submitting RSVP:', error);
+        showNotification('Gagal mengirim konfirmasi', 'error');
+    } finally {
+        // Reset button state
+        submitBtn.disabled = false;
+        spinner.classList.add('hidden');
+        btnText.textContent = 'Kirim Konfirmasi';
+    }
+});
+
+// Load more guests
+document.getElementById('loadMoreGuests').addEventListener('click', function() {
+    loadGuests(currentPage + 1);
+});
+
+// Initialize
+document.addEventListener('DOMContentLoaded', function() {
+    loadStats();
+    loadGuests(1);
+    
+    // Auto-fill from URL parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const invitationCode = urlParams.get('code');
+    
+    if(invitationCode) {
+        document.getElementById('invitationCode').value = invitationCode;
+        // Auto-search guest
+        document.getElementById('guestSearch').value = invitationCode;
+        searchGuest();
+    }
+});
+
+function formatTime(dateString) {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+    
+    if(diffMins < 60) {
+        return `${diffMins} menit yang lalu`;
+    } else if(diffHours < 24) {
+        return `${diffHours} jam yang lalu`;
+    } else if(diffDays < 7) {
+        return `${diffDays} hari yang lalu`;
+    } else {
+        return date.toLocaleDateString('id-ID');
+    }
+}
+
+function showNotification(message, type = 'info') {
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.innerHTML = `
+        <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i>
+        <span>${message}</span>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // Remove after 5 seconds
+    setTimeout(() => {
+        notification.remove();
+    }, 5000);
+}
+</script>
